@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import re
+
 from agentless.repair.repair import construct_topn_file_context
 from agentless.util.compress_file import get_skeleton
 from agentless.util.postprocess_data import extract_code_blocks, extract_locs_for_files
@@ -362,35 +362,58 @@ Return just the locations.
 
         return model_found_locs_separated, {"raw_output_loc": raw_output}, traj
 
-    def split_prompt(self, file_names, compressed_file_contents):
-        prompts = []
-        for file_name in file_names:
-            file_content = compressed_file_contents.get(file_name, "")
-            file_block = self.file_content_in_block_template.format(
-                file_name=file_name, file_content=file_content
-            )
-            prompt = self.obtain_relevant_functions_and_vars_from_compressed_files_prompt_more.format(
-                problem_statement=self.problem_statement, file_contents=file_block
-            )
-            prompts.append(prompt)
-        return prompts
-    
-    def process_prompt(self, prompt, model):
-        traj = model.codegen(prompt, num_samples=1)[0]
-        traj["prompt"] = prompt
-        raw_output = traj["response"]
-        return raw_output, traj
-    
     def localize_function_from_compressed_files(self, file_names, mock=False):
         from agentless.util.api_requests import num_tokens_from_messages
         from agentless.util.model import make_model
+
         file_contents = get_repo_files(self.structure, file_names)
         compressed_file_contents = {
             fn: get_skeleton(code) for fn, code in file_contents.items()
         }
+        contents = [
+            self.file_content_in_block_template.format(file_name=fn, file_content=code)
+            for fn, code in compressed_file_contents.items()
+        ]
+        file_contents = "".join(contents)
+        template = (
+            self.obtain_relevant_functions_and_vars_from_compressed_files_prompt_more
+        )
+        message = template.format(
+            problem_statement=self.problem_statement, file_contents=file_contents
+        )
 
-        prompts = self.split_prompt(file_names, compressed_file_contents)
+        def message_too_long(message):
+            return (
+                num_tokens_from_messages(message, self.model_name) >= MAX_CONTEXT_LENGTH
+            )
 
+        while message_too_long(message) and len(contents) > 1:
+            self.logger.info(f"reducing to \n{len(contents)} files")
+            contents = contents[:-1]
+            file_contents = "".join(contents)
+            message = template.format(
+                problem_statement=self.problem_statement, file_contents=file_contents
+            )  # Recreate message
+
+        if message_too_long(message):
+            raise ValueError(
+                "The remaining file content is too long to fit within the context length"
+            )
+        self.logger.info(f"prompting with message:\n{message}")
+        self.logger.info("=" * 80)
+
+        if mock:
+            self.logger.info("Skipping querying model since mock=True")
+            traj = {
+                "prompt": message,
+                "usage": {
+                    "prompt_tokens": num_tokens_from_messages(
+                        message,
+                        self.model_name,
+                    ),
+                },
+            }                                                                                     
+            return [], {"raw_output_loc": ""}, traj
 
         model = make_model(
             model=self.model_name,
@@ -400,42 +423,26 @@ Return just the locations.
             temperature=0,
             batch_size=1,
         )
+        traj = model.codegen(message, num_samples=1)[0]
+        traj["prompt"] = message
+        raw_output = traj["response"]
 
-        all_raw_outputs = []
-        all_model_found_locs = []
-        all_trajs = []
+        model_found_locs = extract_code_blocks(raw_output)
+        model_found_locs_separated = extract_locs_for_files(
+            model_found_locs, file_names
+        )
 
-        for prompt in prompts:
-            print(f"prompting with message in function localiztion:\n{prompt}")
-            raw_output, traj = self.process_prompt(prompt, model)
-            print("=" * 80)
-            print(raw_output)
-            all_raw_outputs.append(raw_output)
-            model_found_locs = extract_code_blocks(raw_output)
-            all_model_found_locs.extend(model_found_locs)
-            all_trajs.append(traj)
-
-            self.logger.info(f"==== raw output for file ====")
-            self.logger.info(raw_output)
-            self.logger.info("=" * 80)
-
-        model_found_locs_separated = extract_locs_for_files(all_model_found_locs, file_names)
-
+        self.logger.info(f"==== raw output ====")
+        self.logger.info(raw_output)
+        self.logger.info("=" * 80)
         self.logger.info(f"==== extracted locs ====")
         for loc in model_found_locs_separated:
             self.logger.info(loc)
         self.logger.info("=" * 80)
 
-        combined_traj = {
-            "prompt": prompts,
-            "response": all_raw_outputs,
-            "usage": {
-                "prompt_tokens": sum(traj["usage"]["prompt_tokens"] for traj in all_trajs),
-                "completion_tokens": sum(traj["usage"]["completion_tokens"] for traj in all_trajs),
-            }
-        }
+        print(raw_output)
 
-        return model_found_locs_separated, {"raw_output_loc": all_raw_outputs}, combined_traj
+        return model_found_locs_separated, {"raw_output_loc": raw_output}, traj
 
     def localize_line_from_coarse_function_locs(
         self,

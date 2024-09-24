@@ -3,7 +3,7 @@ import libcst.matchers as m
 
 
 class CompressTransformer(cst.CSTTransformer):
-    DESCRIPTION = str = "Replaces function body with ..."
+    DESCRIPTION = "Replaces function body with ... while preserving docstrings"
     replacement_string = '"$$FUNC_BODY_REPLACEMENT_STRING$$"'
 
     def __init__(self, keep_constant=True):
@@ -22,33 +22,70 @@ class CompressTransformer(cst.CSTTransformer):
                 and m.matches(stmt, m.SimpleStatementLine())
                 and m.matches(stmt.body[0], m.Assign())
             )
+            or (
+                m.matches(stmt, m.SimpleStatementLine())
+                and m.matches(stmt.body[0], m.Expr())
+                and m.matches(stmt.body[0].value, m.SimpleString())
+            )
         ]
         return updated_node.with_changes(body=new_body)
 
     def leave_ClassDef(
         self, original_node: cst.ClassDef, updated_node: cst.ClassDef
     ) -> cst.ClassDef:
-        # Remove docstring in the class body
-        new_body = [
-            stmt
-            for stmt in updated_node.body.body
-            if not (
-                m.matches(stmt, m.SimpleStatementLine())
-                and m.matches(stmt.body[0], m.Expr())
-                and m.matches(stmt.body[0].value, m.SimpleString())
-            )
-        ]
+        new_body = []
+        if updated_node.body.body:
+            # Preserve class docstring if present
+            if isinstance(updated_node.body.body[0], cst.SimpleStatementLine):
+                first_stmt = updated_node.body.body[0].body[0]
+                if isinstance(first_stmt, cst.Expr) and isinstance(first_stmt.value, cst.SimpleString):
+                    new_body.append(updated_node.body.body[0])  # Keep the docstring
+
+            # Process class methods
+            for stmt in updated_node.body.body:
+                if isinstance(stmt, cst.FunctionDef):
+                    new_body.append(self.process_function_def(stmt))
+
+        if not new_body:
+            new_body.append(cst.SimpleStatementLine(body=[cst.Expr(value=cst.Ellipsis())]))
+        
         return updated_node.with_changes(body=cst.IndentedBlock(body=new_body))
 
     def leave_FunctionDef(
         self, original_node: cst.FunctionDef, updated_node: cst.FunctionDef
-    ) -> cst.CSTNode:
-        new_expr = cst.Expr(value=cst.SimpleString(value=self.replacement_string))
-        new_body = cst.IndentedBlock((new_expr,))
-        # another way: replace with pass?
-        return updated_node.with_changes(body=new_body)
+    ) -> cst.FunctionDef:
+        return self.process_function_def(updated_node)
+
+    def process_function_def(self, node: cst.FunctionDef) -> cst.FunctionDef:
+        new_body = []
+        if node.body.body:
+            # Preserve function docstring if present
+            if isinstance(node.body.body[0], cst.SimpleStatementLine):
+                first_stmt = node.body.body[0].body[0]
+                if isinstance(first_stmt, cst.Expr) and isinstance(first_stmt.value, cst.SimpleString):
+                    new_body.append(node.body.body[0])  # Keep the docstring
+
+        if not new_body:
+            new_body.append(cst.SimpleStatementLine(body=[cst.Expr(value=cst.Ellipsis())]))
+
+        return node.with_changes(body=cst.IndentedBlock(body=new_body))
 
 
+def get_skeleton(raw_code, keep_constant: bool = True):
+    try:
+        tree = cst.parse_module(raw_code)
+    except:
+        return raw_code
+
+    transformer = CompressTransformer(keep_constant=keep_constant)
+    modified_tree = tree.visit(transformer)
+    code = modified_tree.code
+    code = code.replace(CompressTransformer.replacement_string + "\n", "...\n")
+    code = code.replace(CompressTransformer.replacement_string, "...\n")
+    return code
+
+
+# Test code and function remain unchanged
 code = """
 \"\"\"
 this is a module
@@ -72,21 +109,6 @@ def test():
     a.print()
 
 """
-
-
-def get_skeleton(raw_code, keep_constant: bool = True):
-    try:
-        tree = cst.parse_module(raw_code)
-    except:
-        return raw_code
-
-    transformer = CompressTransformer(keep_constant=keep_constant)
-    modified_tree = tree.visit(transformer)
-    code = modified_tree.code
-    code = code.replace(CompressTransformer.replacement_string + "\n", "...\n")
-    code = code.replace(CompressTransformer.replacement_string, "...\n")
-    return code
-
 
 def test_compress():
     skeleton = get_skeleton(code, True)

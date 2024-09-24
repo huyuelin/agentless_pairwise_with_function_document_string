@@ -43,15 +43,15 @@ def checkout_commit(repo_path, commit_id):
 
 def clone_repo(repo_name, repo_playground):
     try:
-
+        #hu change 0814 改了git clone的链接
         print(
-            f"Cloning repository from https://github.com/{repo_name}.git to {repo_playground}/{repo_to_top_folder[repo_name]}..."
+            f"Cloning repository from https://mirror.ghproxy.com/https://github.com/{repo_name}.git to {repo_playground}/{repo_to_top_folder[repo_name]}..."
         )
         subprocess.run(
             [
                 "git",
                 "clone",
-                f"https://github.com/{repo_name}.git",
+                f"https://mirror.ghproxy.com/https://github.com/{repo_name}.git",
                 f"{repo_playground}/{repo_to_top_folder[repo_name]}",
             ],
             check=True,
@@ -61,6 +61,49 @@ def clone_repo(repo_name, repo_playground):
         print(f"An error occurred while running git command: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+
+# def clone_repo(repo_name, repo_playground):
+#     try:
+#         #hu change 0814 改了git clone的链接
+#         print(
+#             f"Cloning repository from https://gh-proxy.com/github.com/{repo_name}.git to {repo_playground}/{repo_to_top_folder[repo_name]}..."
+#         )
+#         subprocess.run(
+#             [
+#                 "git",
+#                 "clone",
+#                 f"https://gh-proxy.com/github.com/{repo_name}.git",
+#                 f"{repo_playground}/{repo_to_top_folder[repo_name]}",
+#             ],
+#             check=True,
+#         )
+#         print("Repository cloned successfully.")
+#     except subprocess.CalledProcessError as e:
+#         print(f"An error occurred while running git command: {e}")
+#     except Exception as e:
+#         print(f"An unexpected error occurred: {e}")
+
+
+# def clone_repo(repo_name, repo_playground):
+#     try:
+#         #hu change 0814 改了git clone的链接
+#         print(
+#             f"Cloning repository from https://github.com/{repo_name}.git to {repo_playground}/{repo_to_top_folder[repo_name]}..."
+#         )
+#         subprocess.run(
+#             [
+#                 "git",
+#                 "clone",
+#                 f"https://github.com/{repo_name}.git",
+#                 f"{repo_playground}/{repo_to_top_folder[repo_name]}",
+#             ],
+#             check=True,
+#         )
+#         print("Repository cloned successfully.")
+#     except subprocess.CalledProcessError as e:
+#         print(f"An error occurred while running git command: {e}")
+#     except Exception as e:
+#         print(f"An unexpected error occurred: {e}")
 
 
 def get_project_structure_from_scratch(

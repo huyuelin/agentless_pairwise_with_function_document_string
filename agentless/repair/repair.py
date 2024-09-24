@@ -288,6 +288,7 @@ def process_loc(loc, args, swe_bench_data, prev_o):
     topn_content = ""
     # Construct file contents
     file_contents = dict()
+    fake_pred_files = []
     for i, pred_file in enumerate(pred_files):
         content = None
 
@@ -296,8 +297,12 @@ def process_loc(loc, args, swe_bench_data, prev_o):
                 content = "\n".join(file_content[1])
                 file_contents[pred_file] = content
                 break
+            
+        if content is None:  
+                fake_pred_files.append(pred_file)
 
-        assert content is not None, f"{pred_file} file not found"
+        #assert content is not None, f"{pred_file} file not found"
+    pred_files = [file for file in pred_files if file not in fake_pred_files]# 更新预测文件列表
     # Construct top-n file context
     file_to_edit_locs = dict()
     for i, pred_file in enumerate(pred_files):
@@ -463,7 +468,8 @@ def repair(args):
     with open(f"{args.output_folder}/args.json", "w") as f:
         json.dump(vars(args), f, indent=4)
 
-    swe_bench_data = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
+    #swe_bench_data = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
+    swe_bench_data = load_dataset("princeton-nlp/SWE-bench_Verified", split="test")
     locs = load_jsonl(args.loc_file)
     prev_o = load_jsonl(args.output_file) if os.path.exists(args.output_file) else []
 

@@ -156,14 +156,18 @@ def majority_voting(args):
                             vote[patch_key] += 1
                             if patch_key not in first_appear_idx:
                                 first_appear_idx[patch_key] = i
-                    maj_selected_id = max(
-                        valid_indices,
-                        key=lambda i: (
-                            vote[patch_keys[i]],
-                            -first_appear_idx[patch_keys[i]],
-                        ),
-                    )
-                    patch = get_sample(instance_id, maj_selected_id)["patch"]
+                    if valid_indices:  # 确保 valid_indices 不为空
+                        maj_selected_id = max(
+                            valid_indices,
+                            key=lambda i: (
+                                vote[patch_keys[i]],
+                                -first_appear_idx[patch_keys[i]],
+                            ),
+                        )
+                        patch = get_sample(instance_id, maj_selected_id)["patch"]    
+                    else:
+                        patch = ""
+                        
                     result = {
                         "model_name_or_path": "agentless",
                         "instance_id": instance_id,
@@ -260,4 +264,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-#
+
